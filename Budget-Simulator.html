@@ -1,0 +1,464 @@
+<!-- © 2026 Alborz Teymoorzadeh / alborz.studio — not for redistribution -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Budget Simulator — My Macbeth · Beyn Theater Group</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #f0f0f0; font-family: 'Helvetica Neue', Arial, sans-serif; color: #111; }
+    input[type=number] { -moz-appearance: textfield; }
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button { display: none; }
+    button:focus { outline: 2px solid #111; outline-offset: 1px; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useMemo } = React;
+
+// ── Palette ──────────────────────────────────────────────
+const C = {
+  black:    "#111111",
+  darkGrey: "#444444",
+  midGrey:  "#888888",
+  lightGrey:"#cccccc",
+  offWhite: "#f0f0f0",
+  white:    "#ffffff",
+  rowAlt:   "#f7f7f7",
+};
+
+// ── Fixed one-time costs ─────────────────────────────────
+const ONE_TIME = [
+  { label: "Flights",                basis: "12 × €1,000", amount: 12000 },
+  { label: "Schengen Visa",          basis: "12 × €130",   amount: 1560  },
+  { label: "Group Touring Insurance",basis: "12 × €200",   amount: 2400  },
+  { label: "Freight",                basis: "lump sum",     amount: 1200  },
+];
+const ONE_TIME_TOTAL = 17160;
+
+const FEES = [
+  { label: "Director / Scenographer",                  amount: 400  },
+  { label: "Dramaturge",                               amount: 300  },
+  { label: "Lighting Designer / Lighting Supervisor",  amount: 300  },
+  { label: "Costume Designer / Wardrobe Supervisor",   amount: 300  },
+  { label: "Performers (8 × €250)",                    amount: 2000 },
+];
+const FEE_PER_PERF = 3300;
+
+const CONTINGENCY_PCT = 10;
+const DIFFUSION_PCT   = 7;
+
+function calcBudget({ venues, perfs, nights, hotelRate, perDiemRate }) {
+  const hotel       = 6 * hotelRate * nights;
+  const perDiems    = 12 * perDiemRate * nights;
+  const transport   = 840; // fixed
+  const perVenueCost = hotel + perDiems + transport;
+
+  const oneTimePerVenue = ONE_TIME_TOTAL / venues;
+  const feesPerVenue    = FEE_PER_PERF * perfs;
+  const subtotal        = oneTimePerVenue + perVenueCost + feesPerVenue;
+  const contingency     = subtotal * CONTINGENCY_PCT / 100;
+  const fullBudget      = subtotal + contingency;
+  const diffusion       = fullBudget * DIFFUSION_PCT / 100;
+  const cessionPerVenue = fullBudget + diffusion;
+  const cessionPerPerf  = cessionPerVenue / perfs;
+  const tourTotal       = cessionPerVenue * venues;
+
+  return { hotel, perDiems, transport, perVenueCost,
+           oneTimePerVenue, feesPerVenue, subtotal,
+           contingency, fullBudget, diffusion,
+           cessionPerVenue, cessionPerPerf, tourTotal };
+}
+
+const fmt  = n => "€ " + Math.round(n).toLocaleString("de-DE");
+const fmtN = n => Math.round(n).toLocaleString("de-DE");
+
+// ── Shared UI pieces ─────────────────────────────────────
+const Cap = ({ children, light }) => (
+  <div style={{ fontSize:"0.58rem", letterSpacing:"0.14em", textTransform:"uppercase",
+    color: light ? C.midGrey : C.darkGrey, marginBottom:"0.35rem" }}>
+    {children}
+  </div>
+);
+
+const Divider = () => (
+  <div style={{ height:1, background:C.lightGrey, margin:"0" }} />
+);
+
+function StepBtn({ children, onClick, disabled }) {
+  return (
+    <button onClick={onClick} disabled={disabled}
+      style={{ width:28, height:28, border:`1px solid ${disabled ? C.lightGrey : C.black}`,
+        background: disabled ? C.offWhite : C.black,
+        color: disabled ? C.lightGrey : C.white,
+        cursor: disabled ? "default" : "pointer",
+        fontSize:"1rem", fontWeight:700, fontFamily:"inherit",
+        display:"flex", alignItems:"center", justifyContent:"center",
+        flexShrink:0 }}>
+      {children}
+    </button>
+  );
+}
+
+function Counter({ label, value, onChange, min, max, note }) {
+  return (
+    <div style={{ background:C.white, border:`1px solid ${C.lightGrey}`, padding:"0.85rem 1rem" }}>
+      <Cap>{label}</Cap>
+      <div style={{ display:"flex", alignItems:"center", gap:"0.65rem" }}>
+        <StepBtn onClick={() => onChange(Math.max(min, value-1))} disabled={value<=min}>−</StepBtn>
+        <span style={{ fontSize:"1.9rem", fontWeight:700, color:C.black, minWidth:30,
+          textAlign:"center", fontVariantNumeric:"tabular-nums" }}>{value}</span>
+        <StepBtn onClick={() => onChange(Math.min(max, value+1))} disabled={value>=max}>+</StepBtn>
+      </div>
+      {note && <div style={{ fontSize:"0.68rem", color:C.midGrey, marginTop:"0.4rem",
+        lineHeight:1.4 }}>{note}</div>}
+    </div>
+  );
+}
+
+function RateInput({ label, value, onChange, prefix, suffix }) {
+  return (
+    <div style={{ background:C.white, border:`1px solid ${C.lightGrey}`,
+      padding:"0.65rem 0.85rem", display:"flex", justifyContent:"space-between",
+      alignItems:"center", gap:"0.5rem" }}>
+      <label style={{ fontSize:"0.78rem", color:C.darkGrey, flex:1 }}>{label}</label>
+      <div style={{ display:"flex", alignItems:"center", gap:"0.3rem", flexShrink:0 }}>
+        {prefix && <span style={{ fontSize:"0.75rem", color:C.midGrey }}>{prefix}</span>}
+        <input type="number" value={value} min={0}
+          onChange={e => onChange(Math.max(0, parseFloat(e.target.value)||0))}
+          style={{ width:70, border:`1px solid ${C.lightGrey}`, padding:"0.25rem 0.4rem",
+            textAlign:"right", fontFamily:"inherit", fontSize:"0.85rem", color:C.black,
+            background:C.white, outline:"none" }} />
+        {suffix && <span style={{ fontSize:"0.75rem", color:C.midGrey }}>{suffix}</span>}
+      </div>
+    </div>
+  );
+}
+
+function TableRow({ label, sub, right, rightSub, bold, dim, shaded }) {
+  return (
+    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
+      padding:"0.3rem 0.75rem", gap:"0.5rem",
+      background: shaded ? C.rowAlt : C.white,
+      borderBottom:`1px solid ${C.offWhite}` }}>
+      <div>
+        <span style={{ fontSize: bold?"0.82rem":"0.78rem", fontWeight: bold?700:400,
+          color: dim ? C.midGrey : C.black }}>{label}</span>
+        {sub && <span style={{ fontSize:"0.68rem", color:C.midGrey, marginLeft:"0.4rem" }}>{sub}</span>}
+      </div>
+      <div style={{ textAlign:"right", flexShrink:0 }}>
+        <span style={{ fontSize: bold?"0.85rem":"0.8rem", fontWeight: bold?700:500,
+          color:C.black, fontVariantNumeric:"tabular-nums" }}>{right}</span>
+        {rightSub && <div style={{ fontSize:"0.65rem", color:C.midGrey,
+          fontVariantNumeric:"tabular-nums" }}>{rightSub}</div>}
+      </div>
+    </div>
+  );
+}
+
+function SectionLabel({ children }) {
+  return (
+    <div style={{ fontSize:"0.6rem", letterSpacing:"0.13em", textTransform:"uppercase",
+      color:C.midGrey, padding:"0.4rem 0", borderBottom:`1px solid ${C.lightGrey}`,
+      marginBottom:"0.5rem" }}>
+      {children}
+    </div>
+  );
+}
+
+// ── App ──────────────────────────────────────────────────
+function App() {
+  const [venues,     setVenues]     = useState(1);
+  const [perfs,      setPerfs]      = useState(1);
+  const [nightsOverride, setNightsOverride] = useState(null); // null = auto
+  const [hotelRate,  setHotelRate]  = useState(100);
+  const [perDiemRate,setPerDiemRate]= useState(60);
+
+  const autoNights = perfs + 1; // arrive + rehearse/play + (extra perfs) + leave
+  const nights = nightsOverride !== null ? nightsOverride : autoNights;
+
+  const c = useMemo(() =>
+    calcBudget({ venues, perfs, nights, hotelRate, perDiemRate }),
+    [venues, perfs, nights, hotelRate, perDiemRate]
+  );
+
+  // Matrix: venues 1-10, perfs 1-3, auto nights
+  const VENUE_LIST = [1,2,3,4,5,6,8,10];
+  const PERF_LIST  = [1,2,3];
+  const matrix = useMemo(() =>
+    VENUE_LIST.map(v =>
+      PERF_LIST.map(p =>
+        calcBudget({ venues:v, perfs:p, nights:p+1, hotelRate, perDiemRate })
+      )
+    ), [hotelRate, perDiemRate]
+  );
+
+  const nightsAuto = nightsOverride === null;
+
+  return (
+    <div style={{ background:C.offWhite, minHeight:"100vh", padding:"2rem 1.5rem" }}>
+      <div style={{ maxWidth:960, margin:"0 auto" }}>
+
+        {/* Header */}
+        <div style={{ borderBottom:`2px solid ${C.black}`, paddingBottom:"0.85rem",
+          marginBottom:"1.5rem" }}>
+          <div style={{ fontSize:"0.58rem", letterSpacing:"0.2em", textTransform:"uppercase",
+            color:C.midGrey, marginBottom:"0.2rem" }}>
+            My Macbeth · Beyn Theater Group
+          </div>
+          <div style={{ fontSize:"1.35rem", fontWeight:700, color:C.black }}>
+            Production Budget & Cession Simulator
+          </div>
+          <div style={{ fontSize:"0.72rem", color:C.midGrey, marginTop:"0.2rem" }}>
+            12 persons · twin sharing · one-time costs amortised across venues
+          </div>
+        </div>
+
+        {/* Controls row */}
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"0.75rem",
+          marginBottom:"1rem" }}>
+          <Counter label="Venues" value={venues} onChange={setVenues} min={1} max={10}
+            note={`One-time costs: ${fmt(ONE_TIME_TOTAL)} ÷ ${venues} = ${fmt(ONE_TIME_TOTAL/venues)} / venue`} />
+          <Counter label="Performances / venue" value={perfs} onChange={setPerfs} min={1} max={4}
+            note={`Artist fees: €3,300 × ${perfs} = ${fmt(FEE_PER_PERF*perfs)} / venue`} />
+          <div style={{ background:C.white, border:`1px solid ${C.lightGrey}`,
+            padding:"0.85rem 1rem" }}>
+            <Cap>Nights / venue</Cap>
+            <div style={{ display:"flex", alignItems:"center", gap:"0.65rem" }}>
+              <StepBtn onClick={() => {
+                const cur = nightsOverride !== null ? nightsOverride : autoNights;
+                setNightsOverride(Math.max(1, cur-1));
+              }} disabled={nights<=2}>−</StepBtn>
+              <span style={{ fontSize:"1.9rem", fontWeight:700, color:C.black, minWidth:30,
+                textAlign:"center", fontVariantNumeric:"tabular-nums" }}>{nights}</span>
+              <StepBtn onClick={() => {
+                const cur = nightsOverride !== null ? nightsOverride : autoNights;
+                setNightsOverride(cur+1);
+              }}>+</StepBtn>
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:"0.4rem", marginTop:"0.4rem" }}>
+              <div style={{ fontSize:"0.68rem", color: nightsAuto ? C.midGrey : C.black,
+                lineHeight:1.4, flex:1 }}>
+                {nightsAuto
+                  ? `Auto: ${perfs} perf${perfs>1?"s":""} + 1 = ${autoNights} nights`
+                  : `Manual (auto would be ${autoNights})`}
+              </div>
+              {!nightsAuto && (
+                <button onClick={() => setNightsOverride(null)}
+                  style={{ fontSize:"0.6rem", color:C.midGrey, background:"none", border:"none",
+                    cursor:"pointer", textDecoration:"underline", fontFamily:"inherit",
+                    padding:0, flexShrink:0 }}>reset</button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Rates row */}
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0.75rem",
+          marginBottom:"1.5rem" }}>
+          <RateInput label="Hotel rate per room / night" value={hotelRate}
+            onChange={setHotelRate} prefix="€" />
+          <RateInput label="Per diem per person / day" value={perDiemRate}
+            onChange={setPerDiemRate} prefix="€" />
+        </div>
+
+        {/* Main columns */}
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"1.25rem",
+          marginBottom:"1.5rem" }}>
+
+          {/* Left: breakdown */}
+          <div>
+            <SectionLabel>A — One-time costs ÷ {venues} venue{venues>1?"s":""}</SectionLabel>
+            <div style={{ border:`1px solid ${C.lightGrey}`, marginBottom:"1rem" }}>
+              {ONE_TIME.map((r,i) =>
+                <TableRow key={i} label={r.label}
+                  right={fmt(r.amount)}
+                  rightSub={venues>1 ? `${fmt(r.amount/venues)} / venue` : ""}
+                  shaded={i%2!==0} dim />
+              )}
+              <div style={{ background:C.black }}>
+                <TableRow label={`Total one-time / venue`}
+                  right={fmt(c.oneTimePerVenue)} bold />
+              </div>
+            </div>
+
+            <SectionLabel>B — Per-venue costs ({nights} night{nights>1?"s":""})</SectionLabel>
+            <div style={{ border:`1px solid ${C.lightGrey}`, marginBottom:"1rem" }}>
+              <TableRow label="Hotel" sub={`6 rooms × €${hotelRate} × ${nights}n`}
+                right={fmt(c.hotel)} shaded={false} dim />
+              <TableRow label="Per diems" sub={`12p × €${perDiemRate} × ${nights}d`}
+                right={fmt(c.perDiems)} shaded={true} dim />
+              <TableRow label="Train / Bus" sub="12 × €70"
+                right={fmt(c.transport)} shaded={false} dim />
+              <div style={{ background:C.rowAlt }}>
+                <TableRow label="Total per-venue cost"
+                  right={fmt(c.perVenueCost)} bold />
+              </div>
+            </div>
+
+            <SectionLabel>C — Artist fees ({perfs} perf{perfs>1?"s":""})</SectionLabel>
+            <div style={{ border:`1px solid ${C.lightGrey}` }}>
+              {FEES.map((r,i) =>
+                <TableRow key={i} label={r.label}
+                  right={fmt(r.amount * perfs)}
+                  rightSub={perfs>1 ? `€${fmtN(r.amount)}/perf` : ""}
+                  shaded={i%2!==0} dim />
+              )}
+              <div style={{ background:C.rowAlt }}>
+                <TableRow label={`Total fees / venue`}
+                  right={fmt(c.feesPerVenue)} bold />
+              </div>
+            </div>
+          </div>
+
+          {/* Right: summary */}
+          <div>
+            <SectionLabel>D — Summary per venue</SectionLabel>
+            <div style={{ border:`1px solid ${C.lightGrey}`, marginBottom:"1rem" }}>
+              <TableRow label="One-time costs (amortised)" right={fmt(c.oneTimePerVenue)} shaded={false} />
+              <TableRow label="Per-venue costs"            right={fmt(c.perVenueCost)}    shaded={true}  />
+              <TableRow label={`Artist fees (${perfs} perf${perfs>1?"s":""})`}
+                                                           right={fmt(c.feesPerVenue)}    shaded={false} />
+              <div style={{ background:C.rowAlt }}>
+                <TableRow label="Combined subtotal"        right={fmt(c.subtotal)} bold />
+              </div>
+              <TableRow label={`Contingency (${CONTINGENCY_PCT}%)`} right={fmt(c.contingency)} shaded={true} />
+              <div style={{ background:C.rowAlt }}>
+                <TableRow label="Full project budget"      right={fmt(c.fullBudget)} bold />
+              </div>
+              <TableRow label={`Diffusion fee (${DIFFUSION_PCT}%)`} right={fmt(c.diffusion)} shaded={true} />
+              <div style={{ background:C.rowAlt }}>
+                <TableRow label="Cession price / venue"   right={fmt(c.cessionPerVenue)} bold />
+              </div>
+            </div>
+
+            {venues > 1 && (
+              <>
+                <SectionLabel>E — Full tour ({venues} venues)</SectionLabel>
+                <div style={{ border:`1px solid ${C.lightGrey}`, marginBottom:"1rem" }}>
+                  <TableRow label="Total cession (all venues)" right={fmt(c.tourTotal)} bold />
+                  <TableRow label="Diffusion total"             right={fmt(c.diffusion * venues)} shaded />
+                </div>
+              </>
+            )}
+
+            {/* Result block */}
+            <div style={{ border:`2px solid ${C.black}` }}>
+              {/* Cession / venue */}
+              <div style={{ background:C.black, padding:"1rem 1.1rem" }}>
+                <Cap light>Cession price / venue</Cap>
+                <div style={{ fontSize:"2rem", fontWeight:700, color:C.white, lineHeight:1,
+                  fontVariantNumeric:"tabular-nums" }}>{fmt(c.cessionPerVenue)}</div>
+                <div style={{ fontSize:"0.7rem", color:C.midGrey, marginTop:"0.25rem" }}>
+                  {perfs} perf{perfs>1?"s":""} · {nights} nights
+                  {venues>1 ? ` · ${fmt(c.tourTotal)} total tour` : ""}
+                </div>
+              </div>
+              {/* Per performance */}
+              <div style={{ background:C.white, padding:"0.85rem 1.1rem",
+                borderTop:`1px solid ${C.lightGrey}` }}>
+                <Cap>Per performance</Cap>
+                <div style={{ fontSize:"1.6rem", fontWeight:700, color:C.black, lineHeight:1,
+                  fontVariantNumeric:"tabular-nums" }}>{fmt(c.cessionPerPerf)}</div>
+              </div>
+              {/* Diffusion */}
+              <div style={{ background:C.rowAlt, padding:"0.7rem 1.1rem",
+                borderTop:`1px solid ${C.lightGrey}`,
+                display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <span style={{ fontSize:"0.75rem", color:C.darkGrey }}>
+                  Your diffusion fee / venue ({DIFFUSION_PCT}%)
+                </span>
+                <span style={{ fontSize:"1rem", fontWeight:700, color:C.black,
+                  fontVariantNumeric:"tabular-nums" }}>{fmt(c.diffusion)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Matrix */}
+        <SectionLabel>Cession price per performance — all scenarios (click to load)</SectionLabel>
+        <div style={{ overflowX:"auto", border:`1px solid ${C.lightGrey}`,
+          background:C.white, marginBottom:"0.5rem" }}>
+          <table style={{ width:"100%", borderCollapse:"collapse", fontSize:"0.8rem" }}>
+            <thead>
+              <tr>
+                <th style={{ background:C.black, color:C.white, padding:"0.5rem 0.75rem",
+                  textAlign:"left", fontWeight:600, fontSize:"0.65rem",
+                  letterSpacing:"0.1em", width:120 }}>
+                  VENUES →<br/>
+                  <span style={{ fontWeight:400, color:C.midGrey }}>PERFS ↓</span>
+                </th>
+                {VENUE_LIST.map(v =>
+                  <th key={v} style={{ background:C.black, color:C.white,
+                    padding:"0.5rem 0.75rem", textAlign:"center", fontWeight:600,
+                    fontSize:"0.72rem", borderLeft:`1px solid #333` }}>
+                    {v}
+                  </th>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {PERF_LIST.map((p, pi) =>
+                <tr key={p}>
+                  <td style={{ padding:"0.45rem 0.75rem", background:C.rowAlt,
+                    fontWeight:600, color:C.darkGrey, fontSize:"0.72rem",
+                    borderBottom:`1px solid ${C.lightGrey}`,
+                    borderRight:`1px solid ${C.lightGrey}` }}>
+                    {p} perf{p>1?"s":""}
+                    <div style={{ fontWeight:400, color:C.midGrey, fontSize:"0.65rem" }}>
+                      {p+1} nights
+                    </div>
+                  </td>
+                  {VENUE_LIST.map((v, vi) => {
+                    const val = matrix[vi][pi].cessionPerPerf;
+                    const isActive = v===venues && p===perfs;
+                    return (
+                      <td key={v}
+                        onClick={() => { setVenues(v); setPerfs(p); setNightsOverride(null); }}
+                        style={{ padding:"0.45rem 0.6rem", textAlign:"center",
+                          cursor:"pointer", fontVariantNumeric:"tabular-nums",
+                          background: isActive ? C.black : (vi+pi)%2===0 ? C.white : C.rowAlt,
+                          borderBottom:`1px solid ${C.lightGrey}`,
+                          borderLeft:`1px solid ${C.lightGrey}`,
+                          transition:"background 0.1s" }}>
+                        <span style={{ fontSize:"0.78rem", fontWeight: isActive?700:400,
+                          color: isActive ? C.white : C.black }}>
+                          {fmt(val)}
+                        </span>
+                      </td>
+                    );
+                  })}
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ fontSize:"0.66rem", color:C.midGrey, marginBottom:"1.5rem" }}>
+          Nights calculated automatically as performances + 1. Hotel and per diem rates apply from your settings above.
+        </div>
+
+        {/* Notes */}
+        <div style={{ background:C.white, border:`1px solid ${C.lightGrey}`,
+          padding:"0.8rem 1rem", fontSize:"0.7rem", color:C.midGrey, lineHeight:1.6 }}>
+          <span style={{ color:C.darkGrey, fontWeight:600 }}>Fixed costs:</span>&ensp;
+          Flights €12,000 · Visa €1,560 · Insurance €2,400 · Freight €1,200 = <strong style={{color:C.black}}>€17,160 one-time</strong>, divided equally across all venues.&ensp;
+          Transport per venue fixed at €840.&ensp;
+          Contingency {CONTINGENCY_PCT}% · Diffusion {DIFFUSION_PCT}%.&ensp;
+          Any grant received would reduce the net invoice to the venue after diffusion fee is calculated.
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
