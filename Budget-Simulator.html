@@ -52,7 +52,7 @@ const FEES = [
 const FEE_PER_PERF = 3300;
 
 const CONTINGENCY_PCT = 10;
-const DIFFUSION_PCT   = 7;
+const DIFFUSION_PCT   = 10;
 
 function calcBudget({ venues, perfs, nights, hotelRate, perDiemRate }) {
   const hotel       = 6 * hotelRate * nights;
@@ -343,7 +343,6 @@ function App() {
                 <SectionLabel>E — Full tour ({venues} venues)</SectionLabel>
                 <div style={{ border:`1px solid ${C.lightGrey}`, marginBottom:"1rem" }}>
                   <TableRow label="Total cession (all venues)" right={fmt(c.tourTotal)} bold />
-                  <TableRow label="Diffusion total"             right={fmt(c.diffusion * venues)} shaded />
                 </div>
               </>
             )}
@@ -366,16 +365,6 @@ function App() {
                 <Cap>Per performance</Cap>
                 <div style={{ fontSize:"1.6rem", fontWeight:700, color:C.black, lineHeight:1,
                   fontVariantNumeric:"tabular-nums" }}>{fmt(c.cessionPerPerf)}</div>
-              </div>
-              {/* Diffusion */}
-              <div style={{ background:C.rowAlt, padding:"0.7rem 1.1rem",
-                borderTop:`1px solid ${C.lightGrey}`,
-                display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                <span style={{ fontSize:"0.75rem", color:C.darkGrey }}>
-                  Your diffusion fee / venue ({DIFFUSION_PCT}%)
-                </span>
-                <span style={{ fontSize:"1rem", fontWeight:700, color:C.black,
-                  fontVariantNumeric:"tabular-nums" }}>{fmt(c.diffusion)}</span>
               </div>
             </div>
           </div>
@@ -449,8 +438,8 @@ function App() {
           <span style={{ color:C.darkGrey, fontWeight:600 }}>Fixed costs:</span>&ensp;
           Flights €12,000 · Visa €1,560 · Insurance €2,400 · Freight €1,200 = <strong style={{color:C.black}}>€17,160 one-time</strong>, divided equally across all venues.&ensp;
           Transport per venue fixed at €840.&ensp;
-          Contingency {CONTINGENCY_PCT}% · Diffusion {DIFFUSION_PCT}%.&ensp;
-          Any grant received would reduce the net invoice to the venue after diffusion fee is calculated.
+          Contingency {CONTINGENCY_PCT}% included.&ensp;
+          Any grant received would reduce the net invoice to the venue.
         </div>
 
       </div>
